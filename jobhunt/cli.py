@@ -177,11 +177,19 @@ def cmd_learn(a):
     print(text or "Nothing to learn from yet. Rate a few offers (jobhunt rate <id> 1-5) and mark what you send.")
 
 
+def tailor_by_id(jid):
+    """Write the CV for one stored listing. Runs in the board's background worker, so it opens its own database."""
+    c = cfg()
+    db = store.connect()
+    tailor_one(db, db.execute("SELECT * FROM jobs WHERE id=?", (jid,)).fetchone(), c)
+    render.dashboard(db)
+
+
 def cmd_board(a):
     db = store.connect()
     render.dashboard(db)
     try:
-        srv, url = board.serve(BOARD_PORT)
+        srv, url = board.serve(BOARD_PORT, tailor=tailor_by_id)
     except OSError:
         sys.exit(f"The board is already running: http://127.0.0.1:{BOARD_PORT}/")
     print(f"Job Hunter board: {url}  (this computer only; Ctrl+C to stop)", flush=True)

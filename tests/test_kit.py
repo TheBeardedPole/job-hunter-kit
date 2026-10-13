@@ -179,6 +179,38 @@ assert req("/rate", {"id": "ccc333", "rating": "4", "note": "more of these", "to
 row = store.connect().execute("SELECT status, rating, note FROM jobs WHERE id='ccc333'").fetchone()
 assert tuple(row) == ("sent", 4, "more of these"), tuple(row)
 assert srv.server_address[0] == "127.0.0.1"
+assert 'action="/tailor"' not in html_                      # no CV writer given -> no Make-a-CV button
+srv.shutdown()
+# the Make-a-CV button: writes in the background, survives a failure
+import time
+add("ddd444", "Content Designer", "below_bar", 60); add("eee555", "Editor", "below_bar", 58)
+def fake_tailor(jid):
+    if jid == "eee555":
+        raise RuntimeError("model unavailable <b>")
+    time.sleep(0.3); c2 = store.connect(); store.update(c2, jid, status="ready")
+srv, url = board.serve(0, tailor=fake_tailor)
+threading.Thread(target=srv.serve_forever, daemon=True).start()
+code, html_ = req("/"); token = __import__("re").search(r'name="token" value="([^"]+)"', html_).group(1)
+assert html_.count('action="/tailor"') == 2 and "Make a CV" in html_
+assert req("/tailor", {"id": "ddd444", "token": "nope"})[0] == 403
+assert req("/tailor", {"id": "ddd444", "token": token})[0] == 303
+code, html_ = req("/"); assert "Writing the CV now" in html_ and 'http-equiv="refresh"' in html_
+assert store.connect().execute("SELECT status FROM jobs WHERE id='ddd444'").fetchone()[0] == "queued"
+assert req("/tailor", {"id": "ddd444", "token": token})[0] == 303    # a second click while working is ignored
+for _ in range(40):
+    if store.connect().execute("SELECT status FROM jobs WHERE id='ddd444'").fetchone()[0] == "ready": break
+    time.sleep(0.1)
+time.sleep(0.1); code, html_ = req("/")
+assert store.connect().execute("SELECT status FROM jobs WHERE id='ddd444'").fetchone()[0] == "ready"
+assert "Writing the CV now" not in html_ and 'http-equiv="refresh"' not in html_
+assert req("/tailor", {"id": "eee555", "token": token})[0] == 303
+for _ in range(40):
+    code, html_ = req("/")
+    if "Couldn" in html_: break
+    time.sleep(0.1)
+assert "model unavailable &lt;b&gt;" in html_ and "Try again" in html_
+assert store.connect().execute("SELECT status FROM jobs WHERE id='eee555'").fetchone()[0] == "queued"
+assert req("/")[0] == 200                                    # the board is still up after the failure
 srv.shutdown()
 # an old database is upgraded in place
 old = Path(tempfile.mkdtemp()) / "jobs.db"; c = sqlite3.connect(old)

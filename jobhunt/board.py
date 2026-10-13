@@ -6,7 +6,9 @@ the page it serves, and the Host header must be this machine, so another website
 browser cannot press the buttons for you.
 """
 import mimetypes
+import queue
 import secrets
+import threading
 from datetime import date
 from html import escape as e
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -35,36 +37,52 @@ def _links(r, prefix):
     return " · ".join(out)
 
 
-def _controls(r, token):
+NO_CV_YET = ("below_bar", "queued")
+
+
+def _controls(r, token, busy=None, can_tailor=False):
     if not token:
-        return (f'<code>jobhunt mark {r["id"]} sent</code> <code>jobhunt rate {r["id"]} 4</code>'
+        make = f'<code>jobhunt tailor {r["id"]}</code> ' if r["status"] in NO_CV_YET else ""
+        return (f'{make}<code>jobhunt mark {r["id"]} sent</code> <code>jobhunt rate {r["id"]} 4</code>'
                 '<span class="hint"> or run <b>jobhunt board</b> for buttons</span>')
     hid = f'<input type="hidden" name="token" value="{token}"><input type="hidden" name="id" value="{r["id"]}">'
+    state = (busy or {}).get(r["id"], "")
+    make = ""
+    if state == "working":
+        make = ('<p class="working" role="status">Writing the CV now. This takes a minute or two; '
+                'the page refreshes by itself.</p>')
+    elif can_tailor and r["status"] in NO_CV_YET:
+        failed = (f'<p class="failed" role="status">Couldn\'t write it just now ({e(state[8:])}). '
+                  'It stays queued for the next run, or try again.</p>') if state.startswith("failed: ") else ""
+        label = "Try again" if failed else ("Write it now" if r["status"] == "queued" else "Make a CV")
+        make = f'{failed}<form method="post" action="/tailor" class="ctl">{hid}<button class="go">{label}</button></form>'
     status = "".join(
         f'<button name="status" value="{s}" class="{"on" if r["status"] == s else ""}">{feedback.LABELS[s]}</button>'
         for s in SETTABLE if not (s == "ready" and not r["out_dir"]))
     stars = "".join(
         f'<button name="rating" value="{n}" class="{"on" if r["rating"] == n else ""}" '
         f'aria-label="Rate {n} out of 5">{n}</button>' for n in range(1, 6))
-    return (f'<form method="post" action="/mark" class="ctl">{hid}<span>Status</span>{status}</form>'
+    return (f'{make}<form method="post" action="/mark" class="ctl">{hid}<span>Status</span>{status}</form>'
             f'<form method="post" action="/rate" class="ctl">{hid}<span>How much do you like it?</span>{stars}'
             f'<input name="note" maxlength="200" placeholder="why? (optional)" value="{e(r["note"] or "")}" '
             f'aria-label="Why, optional"></form>')
 
 
-def _card(r, token, prefix):
+def _card(r, token, prefix, busy=None, can_tailor=False):
     rating = f'<span class="rated" title="your rating">{"●" * r["rating"]}{"○" * (5 - r["rating"])}</span>' if r["rating"] else ""
     note = f'<p class="note">Your note: {e(r["note"])}</p>' if r["note"] else ""
     return f"""<article id="j-{r['id']}" class="{e(r['status'])}"><div class="top"><span class="score">{r['score'] if r['score'] is not None else '–'}</span>
 <div><h3>{e(r['title'])}</h3><div class="co">{e(r['company'])} · {e(r['location'] or '')} · {e(r['loc_class'] or '')}/{e(r['work_mode'] or '')}</div></div>
 <span class="tag">{e(feedback.LABELS.get(r['status'], r['status']))} {rating}</span></div>
 <p>{e(r['reason'] or '')}</p><p class="sal">{e(r['salary'] or '')}</p>{note}<p class="links">{_links(r, prefix)}</p>
-{_controls(r, token)}</article>"""
+{_controls(r, token, busy, can_tailor)}</article>"""
 
 
-def page(db, token=None):
+def page(db, token=None, busy=None, can_tailor=False):
     """The dashboard HTML. With a token it is the interactive version served by `jobhunt board`."""
     prefix = "/out/" if token else ""
+    busy = busy or {}
+    working = any(v == "working" for v in busy.values())
     q = lambda where, order="score DESC": db.execute(f"SELECT * FROM jobs WHERE {where} ORDER BY {order}").fetchall()
     sections = [
         ("Ready to send", q("status='ready'", "updated DESC, score DESC"), True),
@@ -73,13 +91,14 @@ def page(db, token=None):
         ("Waiting for a CV", q("status='queued'"), True),
         ("Closed", q("status IN ('rejected','skipped')", "status_at DESC, updated DESC"), False),
         ("Worth a look: below your bar, no CV yet", q("status='below_bar' AND (score >= 55 OR rating IS NOT NULL)",
-                                                       "updated DESC, score DESC LIMIT 30"), False),
+                                                       "score DESC, updated DESC LIMIT 30"), False),
     ]
     body = []
     for title, rows, open_ in sections:
         if not rows:
             continue
-        cards = "".join(_card(r, token, prefix) for r in rows)
+        cards = "".join(_card(r, token, prefix, busy, can_tailor) for r in rows)
+        open_ = open_ or any(r["id"] in busy for r in rows)
         body.append(f'<details {"open" if open_ else ""}><summary>{title} <b>{len(rows)}</b></summary>{cards}</details>')
     f = feedback.funnel(db)
     c = f["counts"]
@@ -88,6 +107,7 @@ def page(db, token=None):
     P = PALETTE
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>Job Hunter</title>
+{'<meta http-equiv="refresh" content="8">' if working else ''}
 <style>
 :root {{ --bg:{P['bg']}; --card:{P['card']}; --ink:{P['ink']}; --muted:{P['muted']}; --a:{P['a']}; --b:{P['b']}; --line:{P['line']}; }}
 @media (prefers-color-scheme: dark) {{ :root {{ --bg:{P['dbg']}; --card:{P['dcard']}; --ink:{P['dink']}; --muted:{P['dmuted']}; --a:{P['da']}; --b:{P['db']}; --line:{P['dline']}; }} }}
@@ -111,6 +131,9 @@ code {{ display:inline-block; margin:8px 6px 0 0; font-size:11px; color:var(--mu
 .ctl button {{ font:inherit; font-size:12px; min-height:32px; min-width:32px; padding:0 10px; border-radius:999px; cursor:pointer;
   border:1px solid var(--line); background:transparent; color:var(--ink); }}
 .ctl button:hover {{ border-color:var(--a); }} .ctl button.on {{ background:var(--a); border-color:var(--a); color:var(--bg); font-weight:700; }}
+.ctl button.go {{ background:var(--b); border-color:var(--b); color:#fff; font-weight:700; padding:0 14px; }}
+.working, .failed {{ font-size:13px; margin-top:10px; padding:8px 10px; border-radius:8px; border:1px dashed var(--b); }}
+.failed {{ border-color:var(--muted); color:var(--muted); }}
 .ctl input[name=note] {{ font:inherit; font-size:12px; min-height:32px; flex:1; min-width:140px; padding:0 10px; border-radius:8px;
   border:1px solid var(--line); background:transparent; color:var(--ink); }}
 </style></head><body><main><h1>Job Hunter</h1>
@@ -136,8 +159,25 @@ def set_rating(db, jid, rating, note=None):
     store.update(db, jid, **kw)
 
 
-def serve(port=8765):
+def serve(port=8765, tailor=None):
+    """Serve the board. `tailor(job_id)` writes one CV (it is given by the CLI, which knows the settings);
+    without it the Make-a-CV button is not shown."""
     token = secrets.token_urlsafe(24)
+    busy = {}            # job id -> "working" | "failed: why"
+    work = queue.Queue()
+
+    def worker():
+        while True:
+            jid = work.get()
+            try:
+                tailor(jid)
+                busy.pop(jid, None)
+            except BaseException as ex:      # a failed CV must never take the board down
+                busy[jid] = f"failed: {str(ex)[:160] or type(ex).__name__}"
+
+    if tailor:
+        threading.Thread(target=worker, daemon=True).start()
+
     hosts = set()   # filled in once the port is known (port 0 means "any free port")
 
     class H(BaseHTTPRequestHandler):
@@ -161,7 +201,7 @@ def serve(port=8765):
             path = urlparse(self.path).path
             if path == "/":
                 db = store.connect()
-                return self._send(200, page(db, token).encode())
+                return self._send(200, page(db, token, dict(busy), bool(tailor)).encode())
             if path.startswith("/out/"):
                 f = (OUT / unquote(path[5:])).resolve()
                 if OUT.resolve() in f.parents and f.is_file():
@@ -182,7 +222,13 @@ def serve(port=8765):
             db = store.connect()
             row = db.execute("SELECT id FROM jobs WHERE id=?", (form.get("id", ""),)).fetchone()
             path = urlparse(self.path).path
-            if row and path == "/mark" and form.get("status") in SETTABLE:
+            if row and path == "/tailor" and tailor:
+                if busy.get(row["id"]) != "working":
+                    # Queued first, so the next scheduled run picks it up if this attempt fails.
+                    store.update(db, row["id"], status="queued")
+                    busy[row["id"]] = "working"
+                    work.put(row["id"])
+            elif row and path == "/mark" and form.get("status") in SETTABLE:
                 set_status(db, row["id"], form["status"])
             elif row and path == "/rate" and form.get("rating") in list("12345"):
                 set_rating(db, row["id"], int(form["rating"]), form.get("note"))
