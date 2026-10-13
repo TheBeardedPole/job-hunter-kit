@@ -1,0 +1,73 @@
+# EXAMPLE profile for an invented person. `jobhunt init` builds yours from your CV.
+# A profile is the ONLY set of facts the CV writer may use.
+# READ IT THROUGH. Fix anything wrong, delete anything you don't want used, add what is missing.
+# Optional extras the writer obeys: a `note:` on any job (e.g. "under NDA, keep generic"),
+# and a top-level `positioning:` paragraph on how you want to be pitched.
+
+identity:
+  name: Sam Nowak
+  headline: Content Writer & UX Writer
+  location: Szczecin, Poland
+  email: sam@example.com
+  phone: +48 000 000 000
+  website: ''
+  linkedin: https://linkedin.com/in/example
+languages:
+- name: Polish
+  level: native
+- name: English
+  level: C2
+summary_facts:
+- Content and UX writer with 9 years in software companies.
+- Writes product microcopy, help-centre articles and B2B blog content.
+- Comfortable interviewing engineers and turning what they say into plain English.
+- Has worked as a UX Writer at a payments app, a Content Writer at a B2B SaaS customer-support software company
+  and a Junior Copywriter at an e-commerce agency.
+- Native Polish speaker with C2 English.
+- Holds a BA in English Philology from the University of Szczecin.
+experience:
+- company: Kestrel Pay
+  role: UX Writer
+  period: 2022 – 2026
+  domain: payments app
+  facts:
+  - 'Wrote and maintained all in-app copy for a payments app: onboarding, error states, push notifications.'
+  - Rewrote the identity-verification flow copy with the design team.
+  - Wrote and maintained the product's voice and tone guide.
+  - Worked in Figma alongside 3 product designers.
+- company: Lumen Desk
+  role: Content Writer
+  period: 2019 – 2022
+  domain: customer-support software, B2B SaaS
+  facts:
+  - Wrote long-form blog posts and comparison pages, SEO-optimised.
+  - Wrote 60+ help-centre articles.
+  - Interviewed customers for case studies.
+- company: Brightloop
+  role: Junior Copywriter
+  period: 2017 – 2019
+  domain: e-commerce agency
+  facts:
+  - Wrote product descriptions, newsletters and landing pages for online shops.
+education:
+- school: University of Szczecin
+  degree: BA in English Philology
+  period: 2013 – 2016
+skills:
+  skills:
+  - UX writing
+  - microcopy
+  - help-centre documentation
+  - B2B SaaS content
+  - SEO content
+  - case studies
+  - voice and tone guides
+  tools:
+  - Figma
+  - Google Analytics 4
+  - Google Search Console
+  - Notion
+  - Jira
+links:
+- label: Portfolio
+  url: https://example.com/sam-portfolio

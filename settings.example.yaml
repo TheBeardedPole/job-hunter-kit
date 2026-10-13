@@ -1,0 +1,67 @@
+# EXAMPLE settings for an invented person (Sam Nowak, a content and UX writer in Szczecin).
+# `jobhunt init` writes your own settings.yaml in this shape. Edit freely; it is re-read on every run.
+
+you:
+  country: Poland            # a remote job must be open to this country
+  home_city: [szczecin]          # spellings of your city as listings write it (add local-language forms)
+  home_label: Szczecin            # how to name it in plain text
+  hybrid_cities:                   # cities you'd commute to for a hybrid role, only if the job is really good
+    - label: Warsaw
+      names: [warsaw, warsz]
+
+# What the AI is told you want. Plain sentences; change them whenever your aim changes.
+want:
+  roles: UX writer, content designer, content writer, technical/help-centre writer and B2B SaaS copywriter
+    roles, working in English and/or Polish.
+  industries: 'Software companies: payments/fintech apps, B2B SaaS (customer-support software) and e-commerce.'
+  seniority: senior (9 years)
+  dealbreakers: Roles requiring a language other than Polish or English (the CV lists only those two); otherwise
+    none stated.
+
+# Search terms typed into each job board (one request per term per board).
+queries: [UX writer, content designer, content writer, copywriter, technical writer, content specialist, content marketing specialist, SEO copywriter, specjalista ds. treści, redaktor treści, copywriter język angielski, specjalista ds. content marketingu]
+
+# A listing's TITLE must contain one of these (lowercase fragments) to be looked at at all.
+title_include: [ux writ, ux copy, content design, content writ, content, copywrit, writer, writing, technical writ, tech writ, microcopy, editor, redaktor, treści, tresci, content market, content strateg, knowledge base, documentation, information develop]
+# ...and none of these, unless it also matches title_force_include. Prefix "re:" for a regular expression.
+title_exclude: [underwrit, internship, trainee, staż, staz, praktyk, junior, moderat, video, graphic, grafik, frontend, backend, programist, medical, german, niemiec, french, francus, spanish, hiszpa, italian, włosk, dutch, niderland, swedish, szwedz, norweg, danish, czech]
+title_force_include: [ux writ, ux copy, content design, microcopy]
+
+# The score (0-100) a listing needs before a CV is written for it, by where the job is.
+min_score:
+  remote: 70
+  home: 65
+  hybrid: 85
+
+# A remote listing on an international board must mention one of these (your country is added automatically).
+remote_allow: [worldwide, anywhere, global, europe, emea, eu, cet]
+
+limits:
+  score_batch: 20          # listings per scoring request
+  max_scored_per_run: 120  # newest first; the rest waits for the next run
+  max_tailored_per_run: 6  # CVs per run; extra matches queue for the next run
+  max_age_days: 21
+
+# Which AI does the work. `score` runs often on many listings: a cheap or local model is fine.
+# `tailor` writes the CV: use the strongest model you have.
+# backends: claude-cli | codex-cli | gemini-cli | openai-compatible
+# openai-compatible also takes base_url, and api_key_env (the NAME of an environment variable, never the key).
+llm:
+  score: {backend: claude-cli, model: sonnet}
+  tailor: {backend: claude-cli, model: opus}
+
+cv:
+  languages: [en, pl]        # languages you can apply in; the first is the default
+  accent: "#1F4E79"         # headings and your name
+  accent2: "#B45309"        # company names and bullets
+  consent_clause: ""        # a sentence printed at the foot of CVs for employers in your country (e.g. Poland's RODO clause)
+  cover_note: false         # true to have a short cover note drafted too
+
+# Job boards. All of these publish a feed made for this.
+sources:
+  remotive: true
+  remoteok: true
+  himalayas: true
+  jobicy: true
+  workingnomads: true
+  weworkremotely: true

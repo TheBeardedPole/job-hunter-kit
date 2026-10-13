@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Job Hunter every morning
+
+[Timer]
+OnCalendar=*-*-* 08:30
+Persistent=true
+RandomizedDelaySec=10min
+
+[Install]
+WantedBy=timers.target

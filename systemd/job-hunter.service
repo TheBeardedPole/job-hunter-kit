@@ -1,0 +1,10 @@
+[Unit]
+Description=Job Hunter: fetch listings, triage, tailor CVs
+After=network-online.target
+
+[Service]
+Type=oneshot
+Environment=PATH=%h/.local/bin:%h/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=%h/bin/jobhunt run
+TimeoutStartSec=2h
+Nice=10
