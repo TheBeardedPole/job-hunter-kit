@@ -171,7 +171,9 @@ def req(path, data=None, host=None):
 code, html_ = req("/"); assert code == 200 and 'action="/mark"' in html_
 token = __import__("re").search(r'name="token" value="([^"]+)"', html_).group(1)
 assert req("/", host="evil.example")[0] == 403
-assert req("/mark", {"id": "ccc333", "status": "sent", "token": "nope"})[0] == 403
+assert req("/mark", {"id": "ccc333", "status": "sent", "token": "nope"})[0] == 303      # stale page: reloaded, not applied
+assert store.connect().execute("SELECT status FROM jobs WHERE id='ccc333'").fetchone()[0] == "below_bar"
+assert "out of date" in req("/?stale=1")[1] and "out of date" not in req("/")[1]
 assert req("/mark", {"id": "ccc333", "status": "hacked", "token": token})[0] == 400
 assert req("/out/../settings.example.yaml")[0] == 404
 assert req("/mark", {"id": "ccc333", "status": "sent", "token": token})[0] == 303
@@ -191,8 +193,13 @@ def fake_tailor(jid):
 srv, url = board.serve(0, tailor=fake_tailor)
 threading.Thread(target=srv.serve_forever, daemon=True).start()
 code, html_ = req("/"); token = __import__("re").search(r'name="token" value="([^"]+)"', html_).group(1)
-assert html_.count('action="/tailor"') == 2 and "Make a CV" in html_
-assert req("/tailor", {"id": "ddd444", "token": "nope"})[0] == 403
+add("fff666", "Office Manager", "below_bar", 12)        # far below the bar: listed compactly, still gets a button
+code, html_ = req("/")
+assert html_.count('action="/tailor"') == 3 and "Make a CV" in html_
+assert "Everything else below your bar <b>1</b>" in html_ and 'id="j-fff666"' in html_
+assert "jobhunt tailor fff666" in board.page(store.connect()) and 'id="find"' in board.page(store.connect())
+assert req("/tailor", {"id": "ddd444", "token": "nope"})[0] == 303
+assert store.connect().execute("SELECT status FROM jobs WHERE id='ddd444'").fetchone()[0] == "below_bar"
 assert req("/tailor", {"id": "ddd444", "token": token})[0] == 303
 code, html_ = req("/"); assert "Writing the CV now" in html_ and 'http-equiv="refresh"' in html_
 assert store.connect().execute("SELECT status FROM jobs WHERE id='ddd444'").fetchone()[0] == "queued"

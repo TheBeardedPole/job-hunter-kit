@@ -57,8 +57,10 @@ Tell it two things as you go, with the buttons on the board or the commands abov
 - **Rating**: how much you liked the offer, 1 to 5, with an optional note on why. You can rate anything,
   including the near-misses listed under "Worth a look".
 
-Changed your mind about a near-miss? Each one under "Worth a look" has a **Make a CV** button. It writes
-the CV in the background (a minute or two) and the listing moves to "Ready to send".
+Changed your mind about a listing the scorer passed over? Each near-miss under "Worth a look" has a
+**Make a CV** button, and so does every other listing under "Everything else below your bar" (there is a
+filter box to find one). It writes the CV in the background (a minute or two) and the listing moves to
+"Ready to send".
 
 Both are shown to the AI when it scores new listings. Ratings count as strong evidence of your taste.
 Outcomes count as weak evidence: an interview nudges similar roles up, but a rejection never pushes a role

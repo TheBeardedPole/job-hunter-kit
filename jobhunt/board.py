@@ -78,7 +78,20 @@ def _card(r, token, prefix, busy=None, can_tailor=False):
 {_controls(r, token, busy, can_tailor)}</article>"""
 
 
-def page(db, token=None, busy=None, can_tailor=False):
+def _row(r, token, can_tailor):
+    """One compact line for a listing far below the bar: enough to recognise it and ask for a CV."""
+    if token and can_tailor:
+        act = (f'<form method="post" action="/tailor"><input type="hidden" name="token" value="{token}">'
+               f'<input type="hidden" name="id" value="{r["id"]}"><button class="go">Make a CV</button></form>')
+    else:
+        act = f'<code>jobhunt tailor {r["id"]}</code>'
+    return (f'<li id="j-{r["id"]}"><span class="score">{r["score"] if r["score"] is not None else "–"}</span>'
+            f'<div><a href="{e(r["url"])}" target="_blank" rel="noopener">{e(r["title"])}</a> · {e(r["company"])}'
+            f'<small>{e(r["location"] or "")} · {e(r["loc_class"] or "")}/{e(r["work_mode"] or "")} · '
+            f'{e(r["reason"] or "")}</small></div>{act}</li>')
+
+
+def page(db, token=None, busy=None, can_tailor=False, notice=""):
     """The dashboard HTML. With a token it is the interactive version served by `jobhunt board`."""
     prefix = "/out/" if token else ""
     busy = busy or {}
@@ -100,6 +113,25 @@ def page(db, token=None, busy=None, can_tailor=False):
         cards = "".join(_card(r, token, prefix, busy, can_tailor) for r in rows)
         open_ = open_ or any(r["id"] in busy for r in rows)
         body.append(f'<details {"open" if open_ else ""}><summary>{title} <b>{len(rows)}</b></summary>{cards}</details>')
+    shown = {r["id"] for r in sections[-1][1]}
+    rest = [r for r in q("status='below_bar'", "score DESC, updated DESC") if r["id"] not in shown]
+    if rest:
+        rows_html = "".join(_row(r, token, can_tailor) for r in rest)
+        body.append(f'''<details id="rest"><summary>Everything else below your bar <b>{len(rest)}</b></summary>
+<input type="search" id="find" placeholder="Filter by title, company or place" aria-label="Filter these listings">
+<ul class="rows">{rows_html}</ul><p class="hint" id="none" hidden>Nothing matches.</p></details>
+<script>
+(function () {{
+  var box = document.getElementById("find"), none = document.getElementById("none");
+  if (!box) return;
+  var rows = [].slice.call(document.querySelectorAll("#rest .rows li"));
+  box.addEventListener("input", function () {{
+    var q = box.value.trim().toLowerCase(), seen = 0;
+    rows.forEach(function (li) {{ var hit = !q || li.textContent.toLowerCase().indexOf(q) >= 0; li.hidden = !hit; if (hit) seen++; }});
+    none.hidden = seen > 0;
+  }});
+}})();
+</script>''')
     f = feedback.funnel(db)
     c = f["counts"]
     stats = (f"{c.get('ready', 0)} ready · {f['sent_ever']} sent · {f['heard_back']} heard back · "
@@ -134,10 +166,22 @@ code {{ display:inline-block; margin:8px 6px 0 0; font-size:11px; color:var(--mu
 .ctl button.go {{ background:var(--b); border-color:var(--b); color:#fff; font-weight:700; padding:0 14px; }}
 .working, .failed {{ font-size:13px; margin-top:10px; padding:8px 10px; border-radius:8px; border:1px dashed var(--b); }}
 .failed {{ border-color:var(--muted); color:var(--muted); }}
+.rows {{ list-style:none; margin:8px 0 0; padding:0; }}
+.rows li {{ display:flex; gap:12px; align-items:center; padding:8px 4px; border-bottom:1px solid var(--line); }}
+.rows li[hidden] {{ display:none; }}
+.rows li > div {{ flex:1; min-width:0; font-size:14px; }} .rows small {{ display:block; color:var(--muted); font-size:12px; }}
+.rows .score {{ font-size:15px; min-width:28px; }}
+.rows button, .rows code {{ flex:none; }}
+.rows button {{ font:inherit; font-size:12px; min-height:32px; padding:0 14px; border-radius:999px; cursor:pointer; border:1px solid var(--b);
+  background:var(--b); color:#fff; font-weight:700; }}
+#find {{ font:inherit; font-size:14px; width:100%; min-height:38px; padding:0 12px; border-radius:8px; border:1px solid var(--line);
+  background:var(--card); color:var(--ink); box-sizing:border-box; margin-top:6px; }}
+.notice {{ border:1px solid var(--b); border-radius:8px; padding:10px 12px; margin:0 0 16px; font-size:14px; }}
 .ctl input[name=note] {{ font:inherit; font-size:12px; min-height:32px; flex:1; min-width:140px; padding:0 10px; border-radius:8px;
   border:1px solid var(--line); background:transparent; color:var(--ink); }}
 </style></head><body><main><h1>Job Hunter</h1>
 <div class="stats">Updated {date.today().isoformat()} · {stats}</div>
+{f'<p class="notice" role="status">{e(notice)}</p>' if notice else ''}
 {''.join(body) or '<p>No matches yet.</p>'}</main></body></html>"""
 
 
@@ -201,7 +245,10 @@ def serve(port=8765, tailor=None):
             path = urlparse(self.path).path
             if path == "/":
                 db = store.connect()
-                return self._send(200, page(db, token, dict(busy), bool(tailor)).encode())
+                stale = "stale=1" in urlparse(self.path).query
+                note = ("This page was out of date, so that last click was not applied. "
+                        "It is up to date now: click again.") if stale else ""
+                return self._send(200, page(db, token, dict(busy), bool(tailor), note).encode())
             if path.startswith("/out/"):
                 f = (OUT / unquote(path[5:])).resolve()
                 if OUT.resolve() in f.parents and f.is_file():
@@ -218,7 +265,10 @@ def serve(port=8765, tailor=None):
             form = {k: v[0] for k, v in parse_qs(self.rfile.read(min(n, 10000)).decode("utf-8", "replace"),
                                                  keep_blank_values=True).items()}
             if not secrets.compare_digest(form.get("token", ""), token):
-                return self._send(403, b"forbidden")
+                # A tab left open across a restart holds an old token. Nothing is changed; send it a fresh page.
+                anchor = form.get("id", "")
+                anchor = f"#j-{anchor}" if anchor.isalnum() else ""
+                return self._send(303, extra=[("Location", f"/?stale=1{anchor}")])
             db = store.connect()
             row = db.execute("SELECT id FROM jobs WHERE id=?", (form.get("id", ""),)).fetchone()
             path = urlparse(self.path).path
