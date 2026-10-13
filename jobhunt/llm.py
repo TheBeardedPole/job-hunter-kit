@@ -83,6 +83,8 @@ WHAT THEY WANT
   to another country, that fixed working hours make it impractical, or that the job is really on-site elsewhere,
   score it under 20.
 
+{feedback}
+
 SCORING GUIDE
 90-100 near-perfect role and domain match. 75-89 strong fit, worth a tailored CV. 60-74 plausible.
 Under 40: wrong function, requires a language the candidate doesn't speak, a seniority far off theirs, unpaid or
@@ -97,7 +99,7 @@ LISTINGS (JSON)
 """
 
 
-def score_batch(jobs, cfg):
+def score_batch(jobs, cfg, feedback=""):
     want = cfg.get("want", {})
     payload = [{"id": j["id"], "title": j["title"], "company": j["company"], "location": j["location"],
                 "loc": j["loc_class"], "mode": j["work_mode"], "salary": j["salary"],
@@ -106,6 +108,7 @@ def score_batch(jobs, cfg):
         brief=profile_brief(), roles=want.get("roles", "see the candidate's history"),
         industries=want.get("industries", "any"), seniority=want.get("seniority", "matching their history"),
         dealbreakers=want.get("dealbreakers", "none stated"), location=location_policy(cfg),
+        feedback=feedback or "(No ratings or outcomes yet.)",
         languages=cfg["cv"]["languages"], default_lang=cfg["cv"]["languages"][0],
         jobs=json.dumps(payload, ensure_ascii=False, indent=0))
     out = backends.complete(prompt, score_schema(cfg), cfg["llm"]["score"], timeout=900)

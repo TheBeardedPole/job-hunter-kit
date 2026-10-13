@@ -1,0 +1,11 @@
+[Unit]
+Description=Job Hunter board: the dashboard with buttons, on this computer only
+
+[Service]
+Environment=PATH=%h/.local/bin:%h/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=%h/bin/jobhunt board --no-browser
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

@@ -139,4 +139,54 @@ if render.BROWSER:
     (d / "bad.html").write_text('<a href="relative/link">x</a>')
     assert not render.to_pdf(d / "bad.html", d / "bad.pdf")      # the guard refuses to keep it
 
+# ---- statuses, ratings, the feedback text, and the board server (on a throwaway database)
+import sqlite3, urllib.request, urllib.error, urllib.parse
+from jobhunt import board, feedback
+tmpdb = Path(tempfile.mkdtemp()) / "jobs.db"
+store.DB = tmpdb
+db = store.connect()
+def add(jid, title, status, score=80, out_dir=None):
+    db.execute("INSERT INTO jobs (id, source, url, title, company, location, work_mode, salary, status, loc_class, score, reason, out_dir, updated) "
+               "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (jid, "remotive", "https://example.com/" + jid, title, "Acme <b>", "Europe", "remote", "", status, "remote", score, "fits", out_dir, store.now()))
+    db.commit()
+add("aaa111", "UX Writer", "ready"); add("bbb222", "Technical Writer", "ready"); add("ccc333", "Localisation Specialist", "below_bar", 58)
+assert feedback.preferences(db) == ""
+board.set_rating(db, "aaa111", 5, "love this <script>"); board.set_rating(db, "bbb222", 1); board.set_status(db, "aaa111", "interview"); board.set_status(db, "bbb222", "rejected")
+text = feedback.preferences(db)
+assert "Liked (5/5): UX Writer" in text and "Disliked (1/5): Technical Writer" in text
+assert "Interview: UX Writer" in text and "Rejected: Technical Writer" in text and "Do NOT lower a score" in text
+f = feedback.funnel(db); assert f["sent_ever"] == 2 and f["heard_back"] == 1
+static = board.page(db)
+assert "<script>" not in static.split("</style>")[1] and "Acme &lt;b&gt;" in static and 'method="post"' not in static
+srv, url = board.serve(0)          # any free port
+threading.Thread(target=srv.serve_forever, daemon=True).start()
+def req(path, data=None, host=None):
+    r = urllib.request.Request(url.rstrip("/") + path, data=urllib.parse.urlencode(data).encode() if data else None)
+    if host: r.add_header("Host", host)
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *a, **k): return None
+    try:
+        with urllib.request.build_opener(NoRedirect).open(r, timeout=5) as resp: return resp.status, resp.read().decode()
+    except urllib.error.HTTPError as ex: return ex.code, ""
+code, html_ = req("/"); assert code == 200 and 'action="/mark"' in html_
+token = __import__("re").search(r'name="token" value="([^"]+)"', html_).group(1)
+assert req("/", host="evil.example")[0] == 403
+assert req("/mark", {"id": "ccc333", "status": "sent", "token": "nope"})[0] == 403
+assert req("/mark", {"id": "ccc333", "status": "hacked", "token": token})[0] == 400
+assert req("/out/../settings.example.yaml")[0] == 404
+assert req("/mark", {"id": "ccc333", "status": "sent", "token": token})[0] == 303
+assert req("/rate", {"id": "ccc333", "rating": "4", "note": "more of these", "token": token})[0] == 303
+row = store.connect().execute("SELECT status, rating, note FROM jobs WHERE id='ccc333'").fetchone()
+assert tuple(row) == ("sent", 4, "more of these"), tuple(row)
+assert srv.server_address[0] == "127.0.0.1"
+srv.shutdown()
+# an old database is upgraded in place
+old = Path(tempfile.mkdtemp()) / "jobs.db"; c = sqlite3.connect(old)
+c.execute("CREATE TABLE jobs (id TEXT PRIMARY KEY, source TEXT, ext_id TEXT, url TEXT, title TEXT, company TEXT, location TEXT, work_mode TEXT, salary TEXT, posted TEXT, description TEXT, dedupe_key TEXT, first_seen TEXT, status TEXT, loc_class TEXT, score INTEGER, reason TEXT, angle TEXT, language TEXT, out_dir TEXT, updated TEXT)")
+c.execute("INSERT INTO jobs (id, status) VALUES ('o1','rejected'), ('o2','applied')"); c.commit(); c.close()
+store.DB = old; up = store.connect()
+assert dict(up.execute("SELECT id, status FROM jobs").fetchall()) == {"o1": "below_bar", "o2": "sent"}
+assert {"rating", "note", "status_at"} <= {r[1] for r in up.execute("PRAGMA table_info(jobs)")}
+store.DB = ROOT / "data" / "jobs.db"
+
 print("all kit tests passed")

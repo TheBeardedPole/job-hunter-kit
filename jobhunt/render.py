@@ -199,58 +199,6 @@ def write_job(j, cv, cfg):
 
 # ---------------------------------------------------------------- dashboard
 def dashboard(db):
-    rows = db.execute("""SELECT * FROM jobs WHERE status IN ('ready','queued','applied')
-                         ORDER BY CASE status WHEN 'ready' THEN 0 WHEN 'queued' THEN 1 ELSE 2 END,
-                         updated DESC, score DESC""").fetchall()
-    counts = dict(db.execute("SELECT status, COUNT(*) FROM jobs GROUP BY status").fetchall())
-    cards = []
-    for r in rows:
-        links = f'<a href="{e(r["url"])}" target="_blank" rel="noopener">Listing ↗</a>'
-        if r["out_dir"]:
-            d = ROOT / r["out_dir"]
-            pdf = next(d.glob("*.pdf"), None)
-            rel = lambda p: e(str(p.relative_to(OUT)))
-            if pdf:
-                links += f' · <a href="{rel(pdf)}">CV (PDF)</a>'
-            links += f' · <a href="{rel(d / "cv.html")}">CV (HTML)</a>'
-            if (d / "cover_note.txt").exists():
-                links += f' · <a href="{rel(d / "cover_note.txt")}">Cover note</a>'
-            links += f' · <a href="{rel(d / "job.md")}">Notes</a>'
-        cards.append(f"""<article class="{r['status']}"><div class="top"><span class="score">{r['score'] or '–'}</span>
-<div><h3>{e(r['title'])}</h3><div class="co">{e(r['company'])} · {e(r['location'] or '')} · {e(r['loc_class'] or '')}/{e(r['work_mode'] or '')}</div></div>
-<span class="tag">{r['status']}</span></div>
-<p>{e(r['reason'] or '')}</p><p class="sal">{e(r['salary'] or '')}</p><p class="links">{links}</p>
-<code>jobhunt mark {r['id']} applied</code></article>""")
-    maybes = db.execute("""SELECT * FROM jobs WHERE status='rejected' AND score >= 55
-                           ORDER BY updated DESC, score DESC LIMIT 30""").fetchall()
-    maybe_html = "".join(
-        f'<li><b>{m["score"]}</b> <a href="{e(m["url"])}" target="_blank" rel="noopener">{e(m["title"])}</a> · '
-        f'{e(m["company"])} · {e(m["loc_class"] or "")}<br><small>{e(m["reason"] or "")} '
-        f'<code>jobhunt tailor {m["id"]}</code></small></li>' for m in maybes)
-    if maybe_html:
-        cards.append(f'<h2>Worth a look: below your bar, no CV yet</h2><ul class="maybe">{maybe_html}</ul>')
-    stats = " · ".join(f"{k}: {v}" for k, v in sorted(counts.items()))
-    page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>Job Hunter</title>
-<style>
-:root {{ --bg:#F4F5F7; --card:#fff; --ink:#16191F; --muted:#5B6472; --a:#1F4E79; --b:#B45309; --line:#DFE3E8; }}
-@media (prefers-color-scheme: dark) {{ :root {{ --bg:#12161D; --card:#1A2029; --ink:#EEF1F5; --muted:#9AA4B2; --a:#7CB7F0; --b:#F0A860; --line:#2A313C; }} }}
-body {{ background:var(--bg); color:var(--ink); font:15px/1.5 system-ui,sans-serif; margin:0; padding:24px 16px; }}
-main {{ max-width:860px; margin:0 auto; }} h1 {{ color:var(--a); margin:0; }}
-.stats {{ color:var(--muted); font-size:13px; margin:4px 0 20px; }}
-article {{ background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin:0 0 12px; }}
-article.applied {{ opacity:.55; }} article.queued {{ border-style:dashed; }}
-.top {{ display:flex; gap:12px; align-items:flex-start; }} .top > div {{ flex:1; min-width:0; }}
-h3 {{ margin:0; font-size:16px; }} .co {{ color:var(--muted); font-size:13px; }}
-.score {{ font-weight:800; font-size:20px; color:var(--b); min-width:36px; }}
-.tag {{ font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--a); }}
-p {{ margin:6px 0 0; }} .sal {{ color:var(--muted); font-size:13px; }} a {{ color:var(--a); }}
-h2 {{ font-size:15px; color:var(--muted); margin:28px 0 8px; }}
-.maybe {{ padding-left:18px; }} .maybe li {{ margin:0 0 8px; }} .maybe small {{ color:var(--muted); }}
-code {{ display:inline-block; margin-top:6px; font-size:11px; color:var(--muted); }}
-</style></head><body><main><h1>Job Hunter</h1>
-<div class="stats">Updated {date.today().isoformat()} · {stats}</div>
-{''.join(cards) or '<p>No matches yet.</p>'}</main></body></html>"""
-    OUT.mkdir(exist_ok=True)
-    (OUT / "index.html").write_text(page)
-    return OUT / "index.html"
+    """Write out/index.html. The page itself is built in board.py (which can also serve it with buttons)."""
+    from . import board
+    return board.write_static(db)

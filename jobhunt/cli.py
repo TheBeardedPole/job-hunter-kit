@@ -3,7 +3,10 @@
   jobhunt run [--no-tailor] [--sources a,b]   full pipeline (what the timer runs)
   jobhunt status                              counts + what's ready / queued
   jobhunt tailor <job-id | URL>               make a CV for one job now (any URL works)
-  jobhunt mark <job-id> applied|skipped|queued
+  jobhunt mark <job-id> sent|responded|interview|offer|rejected|skipped
+  jobhunt rate <job-id> <1-5> [--note "why"]  how much you liked the offer; steers future scoring
+  jobhunt learn                               show what your ratings and outcomes tell the scorer
+  jobhunt board                               the dashboard with buttons, on this computer only
   jobhunt open                                open the dashboard
 """
 import argparse
@@ -16,7 +19,7 @@ import webbrowser
 
 import yaml
 
-from . import backends, config, llm, render, setup, sources, store
+from . import backends, board, config, feedback, llm, render, setup, sources, store
 
 
 def log(*a):
@@ -48,10 +51,11 @@ def score_pending(db, c):
     rows = [dict(r) for r in db.execute(
         "SELECT * FROM jobs WHERE status='candidate' ORDER BY posted DESC LIMIT ?",
         (lim["max_scored_per_run"],))]
+    learned = feedback.preferences(db)
     for i in range(0, len(rows), lim["score_batch"]):
         batch = rows[i:i + lim["score_batch"]]
         try:
-            res = llm.score_batch(batch, c)
+            res = llm.score_batch(batch, c, learned)
         except Exception as ex:
             log(f"scoring batch failed, will retry next run: {ex}")
             continue
@@ -61,7 +65,7 @@ def score_pending(db, c):
                 continue
             ok = r["score"] >= c["min_score"].get(j["loc_class"], 101)
             store.update(db, j["id"], score=r["score"], reason=r["reason"], angle=r["angle"],
-                         language=r["language"], status="queued" if ok else "rejected")
+                         language=r["language"], status="queued" if ok else "below_bar")
         log(f"scored {min(i + lim['score_batch'], len(rows))}/{len(rows)}")
 
 
@@ -99,7 +103,7 @@ def notify(done, index):
                             f"{len(done)} tailored CV{'s' if len(done) > 1 else ''} ready to send", top],
                            capture_output=True, text=True, timeout=1800)
         if p.stdout.strip() == "open":
-            webbrowser.open(index.as_uri())
+            webbrowser.open(board_url() or index.as_uri())
     except subprocess.TimeoutExpired:
         pass
 
@@ -116,16 +120,31 @@ def cmd_run(a):
         notify(done, index)
 
 
+BOARD_PORT = 8765
+
+
+def board_url():
+    """The address of the dashboard-with-buttons if `jobhunt board` is running, else None."""
+    import socket
+    try:
+        socket.create_connection(("127.0.0.1", BOARD_PORT), timeout=0.3).close()
+        return f"http://127.0.0.1:{BOARD_PORT}/"
+    except OSError:
+        return None
+
+
 def cmd_status(a):
     db = store.connect()
-    for k, v in db.execute("SELECT status, COUNT(*) FROM jobs GROUP BY status ORDER BY 2 DESC"):
-        print(f"{k:10} {v}")
-    for st in ("ready", "queued"):
-        rows = db.execute(f"SELECT * FROM jobs WHERE status=? ORDER BY score DESC", (st,)).fetchall()
+    f = feedback.funnel(db)
+    print(f"{f['counts'].get('ready', 0)} ready · {f['sent_ever']} sent · {f['heard_back']} heard back · "
+          f"{f['counts'].get('rejected', 0)} rejected")
+    for st in ("ready", "offer", "interview", "responded", "sent", "queued", "rejected"):
+        rows = db.execute("SELECT * FROM jobs WHERE status=? ORDER BY score DESC", (st,)).fetchall()
         if rows:
-            print(f"\n{st.upper()}")
+            print(f"\n{feedback.LABELS[st].upper()}")
             for r in rows:
-                print(f"  {r['id']}  {r['score'] or '–':>3}  {r['loc_class'] or '':8} {r['title']} @ {r['company']}")
+                stars = f" [{r['rating']}/5]" if r["rating"] else ""
+                print(f"  {r['id']}  {r['score'] or '–':>3}  {r['loc_class'] or '':8} {r['title']} @ {r['company']}{stars}")
                 print(f"  {'':12}  {r['url']}")
 
 
@@ -139,9 +158,39 @@ def find(db, key):
 def cmd_mark(a):
     db = store.connect()
     r = find(db, a.id)
-    store.update(db, r["id"], status=a.status)
+    status = "sent" if a.status == "applied" else a.status
+    board.set_status(db, r["id"], status)
     render.dashboard(db)
-    print(f"{r['title']} @ {r['company']} -> {a.status}")
+    print(f"{r['title']} @ {r['company']} -> {feedback.LABELS.get(status, status)}")
+
+
+def cmd_rate(a):
+    db = store.connect()
+    r = find(db, a.id)
+    board.set_rating(db, r["id"], a.rating, a.note)
+    render.dashboard(db)
+    print(f"{r['title']} @ {r['company']} -> {a.rating}/5" + (f' ("{a.note}")' if a.note else ""))
+
+
+def cmd_learn(a):
+    text = feedback.preferences(store.connect())
+    print(text or "Nothing to learn from yet. Rate a few offers (jobhunt rate <id> 1-5) and mark what you send.")
+
+
+def cmd_board(a):
+    db = store.connect()
+    render.dashboard(db)
+    try:
+        srv, url = board.serve(BOARD_PORT)
+    except OSError:
+        sys.exit(f"The board is already running: http://127.0.0.1:{BOARD_PORT}/")
+    print(f"Job Hunter board: {url}  (this computer only; Ctrl+C to stop)", flush=True)
+    if not a.no_browser:
+        webbrowser.open(url)
+    try:
+        srv.serve_forever()
+    except KeyboardInterrupt:
+        pass
 
 
 def cmd_tailor(a):
@@ -173,7 +222,8 @@ def cmd_tailor(a):
 
 
 def cmd_open(a):
-    webbrowser.open(render.dashboard(store.connect()).as_uri())
+    index = render.dashboard(store.connect())
+    webbrowser.open(board_url() or index.as_uri())
 
 
 def main():
@@ -188,12 +238,21 @@ def main():
     sp.add_parser("status").set_defaults(f=cmd_status)
     m = sp.add_parser("mark")
     m.add_argument("id")
-    m.add_argument("status", choices=["applied", "skipped", "queued"])
+    m.add_argument("status", choices=["sent", "applied", "responded", "interview", "offer", "rejected", "skipped", "queued", "ready"])
     m.set_defaults(f=cmd_mark)
     t = sp.add_parser("tailor")
     t.add_argument("target", help="job id from status/dashboard, or any job posting URL")
     t.set_defaults(f=cmd_tailor)
     sp.add_parser("open").set_defaults(f=cmd_open)
+    ra = sp.add_parser("rate", help="how much you liked an offer, 1-5")
+    ra.add_argument("id")
+    ra.add_argument("rating", type=int, choices=[1, 2, 3, 4, 5])
+    ra.add_argument("--note", help="why, in a few words")
+    ra.set_defaults(f=cmd_rate)
+    sp.add_parser("learn", help="show what your ratings and outcomes tell the scorer").set_defaults(f=cmd_learn)
+    bo = sp.add_parser("board", help="the dashboard with buttons, on this computer only")
+    bo.add_argument("--no-browser", action="store_true")
+    bo.set_defaults(f=cmd_board)
     i = sp.add_parser("init", help="build profile.yaml and settings.yaml from your existing CV")
     for flag in ("--cv", "--country", "--city", "--hybrid", "--languages", "--backend", "--model", "--base-url",
                  "--api-key-env"):

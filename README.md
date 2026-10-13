@@ -33,19 +33,35 @@ jobhunt init --cv ~/Documents/my-cv.pdf       # builds your profile and search s
 2. Skim `settings.yaml`. The search terms and title rules decide which listings you ever see.
 3. `jobhunt doctor --live` checks everything, including one small real AI call.
 4. `jobhunt run`. The first run is slow (there's a backlog to score). Later runs only handle new listings.
-5. Happy with it? `./install.sh --timer` runs it every morning at 08:30.
+5. Happy with it? `./install.sh --timer` runs it every morning at 08:30 and keeps the board running.
 
 ## Daily use
 
 ```sh
-jobhunt open                   # the dashboard: matches, CVs, and near-misses worth a look
-jobhunt status                 # the same, in the terminal
-jobhunt tailor <id-or-URL>     # a CV for any listing now, including one you found yourself
-jobhunt mark <id> applied      # or: skipped
+jobhunt board                         # the dashboard with buttons, in your browser (this computer only)
+jobhunt status                        # the same, in the terminal
+jobhunt tailor <id-or-URL>            # a CV for any listing now, including one you found yourself
+jobhunt mark <id> sent                # or: responded, interview, offer, rejected, skipped
+jobhunt rate <id> 4 --note "why"      # how much you liked the offer, 1-5
+jobhunt learn                         # what your ratings and outcomes are telling the scorer
 ```
 
 Each match gets a folder in `out/<date>/` with the CV as PDF and `job.md`: the link, why it scored as it
 did, and the gaps to be ready for in an interview.
+
+### It learns what you like
+
+Tell it two things as you go, with the buttons on the board or the commands above:
+
+- **Status**: what happened. Sent, Responded, Interview, Offer, Rejected, Skipped.
+- **Rating**: how much you liked the offer, 1 to 5, with an optional note on why. You can rate anything,
+  including the near-misses listed under "Worth a look".
+
+Both are shown to the AI when it scores new listings. Ratings count as strong evidence of your taste.
+Outcomes count as weak evidence: an interview nudges similar roles up, but a rejection never pushes a role
+down, because a rejection mostly reflects who else applied. Nothing is trained and nothing is hidden:
+`jobhunt learn` prints the exact text the scorer is given. Expect it to take a handful of ratings before you
+notice a difference, and note that scores wobble a little from run to run anyway.
 
 ## Choosing your AI
 

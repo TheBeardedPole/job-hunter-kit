@@ -31,6 +31,10 @@ if [ "$1" = "--timer" ]; then
     cp "$ROOT/systemd/job-hunter.service" "$ROOT/systemd/job-hunter.timer" "$HOME/.config/systemd/user/"
     systemctl --user daemon-reload
     systemctl --user enable --now job-hunter.timer
+    cp "$ROOT/systemd/job-hunter-board.service" "$HOME/.config/systemd/user/"
+    systemctl --user daemon-reload
+    systemctl --user enable --now job-hunter-board.service
+    echo "installed: dashboard with buttons at http://127.0.0.1:8765/ (this computer only)"
     echo "installed: daily run at 08:30. Turn off with: systemctl --user disable --now job-hunter.timer"
 fi
 

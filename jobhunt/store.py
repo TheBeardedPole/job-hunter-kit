@@ -1,12 +1,16 @@
 """SQLite job store + the deterministic prefilter.
 
 Status flow:
-  filtered   – failed title/location/age prefilter (never sent to Claude)
-  candidate  – passed prefilter, waiting to be scored
-  rejected   – scored below the threshold for its location class
-  queued     – good match, waiting for a CV (tailoring is capped per run)
-  ready      – tailored CV written; go apply
-  applied / skipped – set by you via `jobhunt mark`
+  filtered   - failed the title/location/age rules (never sent to the AI)
+  candidate  - passed the rules, waiting to be scored
+  below_bar  - scored under the threshold for its location class
+  queued     - good match, waiting for a CV (tailoring is capped per run)
+  ready      - tailored CV written; go apply
+  sent -> responded -> interview -> offer, or rejected: what happened next, set by you
+  skipped    - you decided not to apply
+
+`rating` (1-5) and `note` are yours too: how much you liked the offer, and why. See feedback.py for how
+ratings and outcomes steer the scoring of new listings.
 """
 import hashlib
 import re
@@ -20,7 +24,8 @@ DB = ROOT / "data" / "jobs.db"
 
 COLS = ["id", "source", "ext_id", "url", "title", "company", "location", "work_mode",
         "salary", "posted", "description", "dedupe_key", "first_seen", "status",
-        "loc_class", "score", "reason", "angle", "language", "out_dir", "updated"]
+        "loc_class", "score", "reason", "angle", "language", "out_dir", "updated",
+        "rating", "note", "status_at"]
 
 
 
@@ -32,9 +37,19 @@ def connect():
         id TEXT PRIMARY KEY, source TEXT, ext_id TEXT, url TEXT, title TEXT, company TEXT,
         location TEXT, work_mode TEXT, salary TEXT, posted TEXT, description TEXT,
         dedupe_key TEXT, first_seen TEXT, status TEXT, loc_class TEXT, score INTEGER,
-        reason TEXT, angle TEXT, language TEXT, out_dir TEXT, updated TEXT)""")
+        reason TEXT, angle TEXT, language TEXT, out_dir TEXT, updated TEXT,
+        rating INTEGER, note TEXT, status_at TEXT)""")
     db.execute("CREATE INDEX IF NOT EXISTS jobs_dedupe ON jobs(dedupe_key)")
     db.execute("CREATE INDEX IF NOT EXISTS jobs_status ON jobs(status)")
+    if db.execute("PRAGMA user_version").fetchone()[0] < 1:   # databases made before ratings existed
+        have = {r[1] for r in db.execute("PRAGMA table_info(jobs)")}
+        for col, kind in (("rating", "INTEGER"), ("note", "TEXT"), ("status_at", "TEXT")):
+            if col not in have:
+                db.execute(f"ALTER TABLE jobs ADD COLUMN {col} {kind}")
+        db.execute("UPDATE jobs SET status='below_bar' WHERE status='rejected'")
+        db.execute("UPDATE jobs SET status='sent' WHERE status='applied'")
+        db.execute("PRAGMA user_version=1")
+        db.commit()
     return db
 
 
