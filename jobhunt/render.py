@@ -57,7 +57,8 @@ header { display: flex; justify-content: space-between; align-items: flex-end; g
          border-bottom: 3px solid var(--accent); padding-bottom: 8px; margin-bottom: 10px; }
 h1 { font-weight: 700; color: var(--accent); font-size: 23pt; line-height: 1; margin: 0 0 5px; letter-spacing: -.01em; }
 .headline { font-weight: 700; font-size: 11pt; color: var(--accent2); }
-.contact { text-align: right; font-size: 8.6pt; color: var(--muted); line-height: 1.5; }
+.contact { text-align: right; font-size: 8.6pt; color: var(--muted); line-height: 1.5; flex: none; white-space: nowrap; }
+header > div:first-child { min-width: 0; }
 .contact a { color: var(--ink); text-decoration: none; }
 h2 { font-size: 8.4pt; text-transform: uppercase; letter-spacing: .12em; color: var(--accent); margin: 12px 0 5px;
      padding-bottom: 2px; border-bottom: 1px solid var(--rule); break-after: avoid; }
@@ -126,7 +127,11 @@ def cv_html(cv, profile, cfg, consent=False):
         for x in cv["experience"])
     lst = lambda items: "".join(f"<li>{e(x)}</li>" for x in items or [])
     work = "".join(f'<li>{_link(w["url"], w["label"])}</li>' for w in cv.get("selected_work") or [])
-    extras = lst(cv.get("extras"))
+    def named(x):
+        """"Name (link): rest" -> the name in bold, so a list of projects can be scanned."""
+        m = re.match(r"^(.{2,70}?):\s+(.+)$", x, re.S)
+        return f"<b>{e(m.group(1))}:</b> {e(m.group(2))}" if m else e(x)
+    extras = "".join(f"<li>{named(x)}</li>" for x in cv.get("extras") or [])
     extras_block = f"<h2>{e(cv.get('extras_title') or '')}</h2><ul>{extras}</ul>" if extras else ""
     side = [(L["work"], work), (L["languages"], lst(cv.get("languages"))), (L["education"], lst(cv.get("education")))]
     side = [f"<div><h2>{t}</h2><ul>{body}</ul></div>" for t, body in side if body]

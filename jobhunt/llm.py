@@ -163,13 +163,15 @@ HARD RULES. Breaking these is worse than a weak CV:
 3. Obey every `note`, `usage` and `positioning` field in the profile: they are the candidate's own instructions
    about what may be said and how.
 4. Write the CV in {language_name}. Mirror the listing's own key terms where they truthfully apply.
-5. `headline`: the target role framed for this job, max 8 words. `summary`: 3-4 sentences aimed at this job.
+5. `headline`: the target role framed for this job, max 8 words; it must fit on one line. `summary`: 3-4 sentences aimed at this job.
    `key_skills`: 8-12 short items, most relevant first.
    `education`: one line per entry in the profile ("Degree, School (years)"), or empty if the profile has none.
    `languages`: one line per language in the profile ("English: native"), written in {language_name}.
    `extras_title`/`extras`: an optional section (side projects, tools, volunteering), 2-5 items, or empty. Never
    repeat languages, education or contact details there. Set `extras_first` true only when that section is the
    candidate's strongest evidence for this job, so it prints above the employment history.
+   Write each item as "Name (short link if it has one): what it is, then the 1-2 facts that matter most for this
+   job", in at most 45 words. A reader should take in the whole section in 20 seconds; pick, don't list everything.
    `selected_work`: 0-4 links from the PROFILE most relevant to this job (exact URLs from the profile only).
 {cover_rule}7. `fit_summary`: one honest sentence for the candidate (not the employer) on why this is or isn't a strong shot.
    `gaps`: every requirement in the listing the profile does not clearly meet. `keywords_matched`: the listing's

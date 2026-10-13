@@ -131,6 +131,10 @@ import re as _re
 hrefs = _re.findall(r'href="([^"]*)"', html)
 assert hrefs and all(h.startswith(("https://", "mailto:")) for h in hrefs), hrefs
 assert "Local" in html and "../x.pdf" not in html
+cv2 = dict(cv, extras_title="Builds", extras=["Tool (example.com/x): does a thing <b>", "no name here"])
+h2 = render.cv_html(cv2, prof, cfg)
+assert "<b>Tool (example.com/x):</b> does a thing &lt;b&gt;" in h2 and "<li>no name here</li>" in h2
+assert "white-space: nowrap" in h2
 if render.BROWSER:
     d = Path(tempfile.mkdtemp()); (d / "cv.html").write_text(html)
     assert render.to_pdf(d / "cv.html", d / "cv.pdf")
